@@ -2,11 +2,14 @@
 title: "Topic 5 Word Relationships"
 author: "Charles Hendrickson"
 date: "5/3/2022"
-output: html_document
+output:
+  pdf_document: default
+  latex_engine: xelatex
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
 ```{r packages}
@@ -96,6 +99,11 @@ word_pairs %>%
   theme_void()
 ```
 
+# Q2. 
+Choose a new focal term to replace “justice” and recreate the correlation table and network (see corr_paragraphs and corr_network chunks). Explore some of the plotting parameters in the cor_network chunk to see if you can improve the clarity or amount of information your plot conveys. Make sure to use a different color for the ties!
+
+**I chose to replace "justice" with "minority".**
+
 Hmm, interesting, but maybe we further subset the word pairs to get a cleaner picture of the most common ones by raising the cutoff for number of occurrences (n).
 
 Pairs like "environmental" and "justice" are the most common co-occurring words, but that doesn't give us the full picture asthey're also the most common individual words. We can also look at correlation among words, which tells us how often they appear together relative to how often they appear separately.
@@ -110,7 +118,7 @@ word_cors <- par_words %>%
 just_cors <- word_cors %>% 
   filter(item1 == "justice")
   word_cors %>%
-  filter(item1 %in% c("environmental", "justice", "equity", "income"))%>%
+  filter(item1 %in% c("environmental", "minority", "equity", "income"))%>%
   group_by(item1) %>%
   top_n(6) %>%
   ungroup() %>%
@@ -136,10 +144,10 @@ Not surprisingly, the correlation between "environmental" and "justice" is by fa
 
 ```{r corr_network}
 justice_cors  %>%
-  filter(n <= 50) %>%
+  filter(n <= 10) %>%
   graph_from_data_frame() %>%
   ggraph(layout = "fr") +
-  geom_edge_link(aes(edge_alpha = correlation, edge_width = correlation), edge_colour = "cyan4") +
+  geom_edge_link(aes(edge_alpha = correlation, edge_width = correlation), edge_colour = "green4") +
   geom_node_point(size = 5) +
   geom_node_text(aes(label = name), repel = TRUE, 
                  point.padding = unit(0.2, "lines")) +
@@ -180,7 +188,7 @@ head(tstat_freq, 10)
 ```
 
 # Q1.
-### What are the most frequent trigrams in the dataset? How does this compare to the most frequent bigrams? Which n-gram seems more informative here, and why?
+What are the most frequent trigrams in the dataset? How does this compare to the most frequent bigrams? Which n-gram seems more informative here, and why?
 
 **The three most frequent trigrams in the dataset are "justice_fy2017_progress", "fy2017_progress_report", and "environmental_public_health". The top three most frequent bigrams are "environmental_justice", "technical_assistance", and "drinking_water".**
 
@@ -208,10 +216,11 @@ freq_words2_ordered <- freq_words2 %>% mutate(feature = reorder(feature, frequen
   coord_flip() +
   labs(title = "Frequency of Bigrams",
        x = "Frequency",
-       y = "Bigram Feature")
+       y = "Bigram Feature") +
+    theme_bw()
 ```
 
-```{r convert_dfm}
+```{r}
 # Find the most frequent trigrams 
 toks3 <- tokens_ngrams(toks1, n=3)
 dfm3 <- dfm(toks3)
@@ -226,21 +235,69 @@ freq_words3$token <- rep("trigram", 20)
 freq_words3_ordered <- freq_words3 %>% mutate(feature = reorder(feature, frequency)) 
 
 # Visualize the most frequent trigrams
-  ggplot(data = freq_words2_ordered, aes(x = feature, y = frequency)) +
+  ggplot(data = freq_words3_ordered, aes(x = feature, y = frequency)) +
   geom_col() +
   coord_flip() +
   labs(title = "Frequency of Trigrams",
        x = "Frequency",
-       y = "Trigram Feature")
+       y = "Trigram Feature") +
+    theme_bw()
 ```
 
+# Q3.  
+Write a function that allows you to conduct a keyness analysis to compare two individual EPA reports (hint: that means target and reference need to both be individual reports). Run the function on 3 pairs of reports, generating 3 keyness plots.
 
 Now we can upgrade that by using all of the frequencies for each word in each document and calculating a chi-square to see which words occur significantly more or less within a particular target document
 
 ```{r}
-keyness <- textstat_keyness(dfm2, target = 2)
+keyness <- textstat_keyness(dfm, target = 2)
 textplot_keyness(keyness)
 ```
+
+```{r}
+keyness_function <- function(EPA_report1, EPA_report2) {
+  
+files = c(EPA_report1, EPA_report2)
+
+ej_reports <- lapply(files, pdf_text)
+
+ej_pdf <- readtext(file = files, 
+                   docvarsfrom = "filenames", 
+                   docvarnames = c("type", "year"),
+                   sep = "_")
+#creating an initial corpus containing our data
+epa_corp <- corpus(x = ej_pdf, text_field = "text" )
+
+tokens <- tokens(epa_corp, remove_punct = TRUE)
+toks1<- tokens_select(tokens, min_nchar = 3)
+toks1 <- tokens_tolower(toks1)
+toks1 <- tokens_remove(toks1, pattern = (stop_vec))
+dfm <- dfm(toks1)
+
+keyness <- textstat_keyness(dfm, target = 2)
+return(textplot_keyness(keyness))
+}
+
+
+# Plot of keyness analysis to compare two individual EPA reports
+keyness_function(EPA_report1 = "data/EPA_EJ_2015.pdf" , EPA_report2 = "data/EPA_EJ_2016.pdf")
+
+```
+
+```{r}
+# Plot of keyness analysis to compare two individual EPA reports
+
+keyness_function(EPA_report1 = "data/EPA_EJ_2017.pdf" , EPA_report2 = "data/EPA_EJ_2018.pdf")
+
+```
+
+```{r}
+# Plot of keyness analysis to compare two individual EPA reports
+
+keyness_function(EPA_report1 = "data/EPA_EJ_2019.pdf" , EPA_report2 = "data/EPA_EJ_2020.pdf")
+
+```
+
 
 And finally, we can run a hierarchical clustering algorithm to assess document similarity. This tends to be more informative when you are dealing with a larger number of documents, but we'll add it here for future reference.
 
@@ -250,6 +307,40 @@ clust <- hclust(dist)
 plot(clust, xlab = "Distance", ylab = NULL)
 ```
 
+# Q4.  
+Select a word or multi-word term of interest and identify words related to it using windowing and keyness comparison. To do this you will create two objects: one containing all words occurring within a 10-word window of your term of interest, and the second object containing all other words. Then run a keyness comparison on these objects. Which one is the target, and which the reference? [Hint](https://tutorials.quanteda.io/advanced-operations/target-word-collocations/)
+
+```{r}
+# We select two tokens objects for words inside and outside of the 10-word windows of the keywords (eu).
+
+tokens <- tokens(epa_corp, remove_punct = TRUE)
+toks1<- tokens_select(tokens, min_nchar = 3)
+toks1 <- tokens_tolower(toks1)
+toks1 <- tokens_remove(toks1, pattern = (stop_vec))
+
+indigenous <- c("indigenous")
+toks_inside <- tokens_keep(toks1, pattern = indigenous, window = 10)
+toks_inside <- tokens_remove(toks_inside, pattern = indigenous) # remove the keywords
+toks_outside <- tokens_remove(toks1, pattern = indigenous, window = 10)
+```
+
+```{r}
+# We compute words’ association with the keywords using textstat_keyness().
+
+dfmat_inside <- dfm(toks_inside)
+dfmat_outside <- dfm(toks_outside)
+
+tstat_key_inside <- textstat_keyness(rbind(dfmat_inside, dfmat_outside), 
+                                     target = seq_len(ndoc(dfmat_inside)))
+head(tstat_key_inside, 10)
+```
+
+```{r}
+textplot_keyness(tstat_key_inside)
+```
+
+**The target is all words occurring within a 10-word window, and the reference is all words occurring outside the 10-word window.**
+
 Assignment
 
 1.  What are the most frequent trigrams in the dataset? How does this compare to the most frequent bigrams? Which n-gram seems more informative here, and why?
@@ -258,4 +349,4 @@ Assignment
 
 3.  Write a function that allows you to conduct a keyness analysis to compare two individual EPA reports (hint: that means target and reference need to both be individual reports). Run the function on 3 pairs of reports, generating 3 keyness plots.
 
-4.  Select a word or multi-word term of interest and identify words related to it using windowing and keyness comparison. To do this you will create to objects: one containing all words occurring within a 10-word window of your term of interest, and the second object containing all other words. Then run a keyness comparison on these objects. Which one is the target, and which the reference? [Hint](https://tutorials.quanteda.io/advanced-operations/target-word-collocations/)
+4.  Select a word or multi-word term of interest and identify words related to it using windowing and keyness comparison. To do this you will create two objects: one containing all words occurring within a 10-word window of your term of interest, and the second object containing all other words. Then run a keyness comparison on these objects. Which one is the target, and which the reference? [Hint](https://tutorials.quanteda.io/advanced-operations/target-word-collocations/)
